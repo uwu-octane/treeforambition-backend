@@ -1,0 +1,283 @@
+import { AuthenticatedMedusaRequest, MedusaResponse } from "@medusajs/framework/http"
+import { MedusaError, ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
+import { completeCartWorkflow } from "@medusajs/medusa/core-flows"
+import { z } from "zod"
+
+// Checkout request schema matching the frontend payload
+export const CheckoutRequestSchema = z.object({
+  addressId: z.string().optional(),
+  customerEmail: z.string().email().optional(),
+  items: z.array(z.object({
+    productId: z.string().min(1),
+    routeVariantSlug: z.string().optional(),
+    quantity: z.number().int().min(1),
+  })),
+  orderIssuedAt: z.string().optional(),
+  orderNote: z.string().optional(),
+  orderNumber: z.string().optional(),
+  shippingMethodID: z.string().optional(),
+  shippingMethodLabel: z.string().optional(),
+  paymentMethod: z.enum(["wechat_jsapi", "manual"]).default("wechat_jsapi"),
+})
+
+export type CheckoutRequest = z.infer<typeof CheckoutRequestSchema>
+
+export async function POST(
+  req: AuthenticatedMedusaRequest<CheckoutRequest>,
+  res: MedusaResponse
+) {
+  const body = req.validatedBody
+  const customerId = req.auth_context.actor_id
+  const query = req.scope.resolve(ContainerRegistrationKeys.QUERY)
+  const logger = req.scope.resolve("logger")
+  const cartModuleService = req.scope.resolve(Modules.CART)
+  const paymentModuleService = req.scope.resolve(Modules.PAYMENT)
+  const link = req.scope.resolve(ContainerRegistrationKeys.LINK)
+
+  const isMockPayment = process.env.PREVIEW_PAYMENT_MODE === "mock_success"
+
+  logger.info(
+    `[Checkout] initiated customer=${customerId} mock=${isMockPayment} payment=${body.paymentMethod}`
+  )
+
+  try {
+    // ============================================================
+    // 1. Resolve store defaults (region and sales channel)
+    // ============================================================
+    const { data: regions } = await query.graph({
+      entity: "region",
+      fields: ["id", "currency_code"],
+      pagination: { take: 1, skip: 0 },
+    })
+
+    if (!regions?.length) {
+      throw new MedusaError(
+        MedusaError.Types.INVALID_DATA,
+        "No region configured in the store"
+      )
+    }
+
+    const region = regions[0]
+    const currencyCode = region.currency_code
+
+    const { data: salesChannels } = await query.graph({
+      entity: "sales_channel",
+      fields: ["id"],
+      pagination: { take: 1, skip: 0 },
+    })
+    const salesChannelId = salesChannels?.[0]?.id
+
+    // ============================================================
+    // 2. Resolve each item by product handle (productId) to variant ID
+    // ============================================================
+    const lineItems: Array<{ variant_id: string; quantity: number }> = []
+
+    for (const item of body.items) {
+      const { data: products } = await query.graph({
+        entity: "product",
+        fields: ["id", "title", "handle", "variants.id", "variants.title"],
+        filters: { handle: item.productId },
+      })
+
+      if (!products?.length) {
+        throw new MedusaError(
+          MedusaError.Types.NOT_FOUND,
+          `Product not found by handle: ${item.productId}`
+        )
+      }
+
+      const product = products[0]
+      let variant: any = null
+
+      if (item.routeVariantSlug) {
+        variant = product.variants?.find(
+          (v: any) => v.title === item.routeVariantSlug
+        )
+      }
+
+      if (!variant && product.variants?.length) {
+        variant = product.variants[0]
+      }
+
+      if (!variant) {
+        throw new MedusaError(
+          MedusaError.Types.INVALID_DATA,
+          `No variant found for product: ${item.productId}` +
+            (item.routeVariantSlug ? ` (variant: ${item.routeVariantSlug})` : "")
+        )
+      }
+
+      lineItems.push({
+        variant_id: variant.id,
+        quantity: item.quantity,
+      })
+    }
+
+    // ============================================================
+    // 3. Resolve shipping address
+    // ============================================================
+    let shippingAddress: Record<string, any> | undefined
+
+    if (body.addressId) {
+      // Fetch a saved address
+      const { data: addresses } = await query.graph({
+        entity: "address",
+        fields: [
+          "id",
+          "first_name",
+          "last_name",
+          "phone",
+          "address_1",
+          "address_2",
+          "city",
+          "province",
+          "postal_code",
+          "country_code",
+          "metadata",
+        ],
+        filters: { id: body.addressId, customer_id: customerId },
+      })
+
+      if (!addresses?.length) {
+        throw new MedusaError(
+          MedusaError.Types.NOT_FOUND,
+          `Shipping address not found: ${body.addressId}`
+        )
+      }
+
+      const addr = addresses[0]
+      shippingAddress = {
+        first_name: addr.first_name || addr.metadata?.recipientName || "",
+        last_name: addr.last_name || "",
+        phone: addr.phone,
+        address_1: addr.address_1,
+        address_2: addr.address_2 || undefined,
+        city: addr.city,
+        province: addr.province || undefined,
+        postal_code: addr.postal_code || undefined,
+        country_code: (addr.country_code || "cn").toLowerCase(),
+      }
+    }
+
+    // ============================================================
+    // 4. Create the cart with items and shipping address
+    // ============================================================
+    const cart = await cartModuleService.createCarts({
+      currency_code: currencyCode,
+      region_id: region.id,
+      ...(salesChannelId ? { sales_channel_id: salesChannelId } : {}),
+      customer_id: customerId,
+      ...(body.customerEmail ? { email: body.customerEmail } : {}),
+      ...(shippingAddress ? { shipping_address: shippingAddress } : {}),
+      items: lineItems.map((item) => ({
+        variant_id: item.variant_id,
+        quantity: item.quantity,
+        title: "",
+        unit_price: 0,
+      })),
+    })
+
+    const cartId = cart.id
+
+    // ============================================================
+    // 5. Add shipping method
+    // ============================================================
+    if (body.shippingMethodLabel) {
+      await cartModuleService.addShippingMethods(cartId, [
+        {
+          name: body.shippingMethodLabel,
+          amount: 0,
+        },
+      ])
+    }
+
+    // ============================================================
+    // 6. Create payment collection and session
+    // ============================================================
+    // Determine the payment provider:
+    // - Mock/preview mode -> use the built-in system provider (always succeeds)
+    // - WeChat JSAPI       -> use the custom wechat payment provider
+    // - Manual             -> use the custom manual payment provider
+    const paymentProvider = isMockPayment
+      ? "pp_system_default"
+      : body.paymentMethod === "wechat_jsapi"
+        ? "wechat_default"
+        : "manual_default"
+
+    const [paymentCollection] = await paymentModuleService.createPaymentCollections({
+      currency_code: currencyCode,
+      amount: 0,
+    } as any)
+
+    // Link the payment collection to the cart so the complete-cart workflow
+    // can find it and authorize payment.
+    await link.create({
+      [Modules.CART]: { cart_id: cartId },
+      [Modules.PAYMENT]: { payment_collection_id: paymentCollection.id },
+    })
+
+    await paymentModuleService.createPaymentSession(paymentCollection.id, {
+      provider_id: paymentProvider,
+      currency_code: currencyCode,
+      amount: 0,
+      data: {},
+    })
+
+    // ============================================================
+    // 7. Complete the cart -> converts it to an order
+    // ============================================================
+    const { result } = await completeCartWorkflow(req.scope).run({
+      input: { id: cartId },
+    })
+
+    const workflowResult = result as unknown as {
+      type: "order" | "cart"
+      order?: any
+      cart?: any
+      error?: { message: string }
+    }
+
+    if (workflowResult.type === "cart") {
+      throw new MedusaError(
+        MedusaError.Types.INVALID_DATA,
+        workflowResult.error?.message || "Cart completion failed"
+      )
+    }
+
+    const order = workflowResult.order
+
+    logger.info(
+      `[Checkout] completed orderId=${order.id} displayId=${order.display_id}`
+    )
+
+    // ============================================================
+    // 8. Build payment data for the frontend response
+    // ============================================================
+    const mockPrepayId = `prepay_mock_${Date.now().toString(36)}`
+    const paymentData = {
+      prepayId: mockPrepayId,
+      appId: process.env.WECHAT_SERVICE_APP_ID || "mock_app_id",
+      timeStamp: String(Math.floor(Date.now() / 1000)),
+      nonceStr: Math.random().toString(36).substring(2),
+      package: `prepay_id=${mockPrepayId}`,
+      signType: "RSA",
+      paySign: "mock_sign",
+    }
+
+    return res.json({
+      success: true,
+      orderID: order.id,
+      orderNumber: order.display_id,
+      payment: body.paymentMethod === "wechat_jsapi" ? paymentData : undefined,
+      paymentSession: body.paymentMethod === "wechat_jsapi" ? paymentData : undefined,
+    })
+  } catch (error) {
+    logger.error(
+      `[Checkout] failed: ${error instanceof Error ? error.message : String(error)}`
+    )
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : "Checkout failed",
+    })
+  }
+}
