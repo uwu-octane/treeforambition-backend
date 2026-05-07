@@ -5,12 +5,10 @@ Scripts for seeding and migrating data into the Medusa backend.
 ## Quick Start
 
 ```bash
-# Install dependencies (from medusa-backend root)
-cd ../../../
-npm install  # or pnpm install
+# Install dependencies
+npm install
 
 # Run the import
-cd apps/backend
 DATABASE_URL=postgres://postgres@localhost/medusa_backend \
   npx medusa exec src/migration-scripts/import-supabase-data.ts
 ```
@@ -28,7 +26,7 @@ via in-memory ID maps, and logs progress for each table.
 | Variable | Default | Description |
 |---|---|---|
 | `DATABASE_URL` | `postgres://postgres@localhost/medusa_backend` | Target database |
-| `SUPABASE_DATA_FILE` | `../../../supabase/data.sql` (relative to CWD) | Path to the pg_dump data file |
+| `SUPABASE_DATA_FILE` | `../supabase/data.sql` (relative to CWD) | Path to the pg_dump data file |
 | `DRY_RUN` | `false` | Set to `true` to parse + log without writing |
 | `SKIP_TABLES` | (none) | Comma-separated list of tables to skip (e.g. `order,customer`) |
 
