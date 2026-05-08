@@ -1,10 +1,15 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { MedusaError } from "@medusajs/framework/utils"
 
+const log = (entry: Record<string, unknown>) => {
+  console.log(JSON.stringify({ ts: new Date().toISOString(), ...entry }))
+}
+
 export async function GET(
   req: MedusaRequest,
   res: MedusaResponse
 ) {
+  const t0 = Date.now()
   const { searchParams } = new URL(
     req.url,
     `http://${req.headers.host || "localhost"}`
@@ -12,6 +17,7 @@ export async function GET(
   const slug = searchParams.get("slug")
 
   if (!slug) {
+    log({ level: "warn", module: "backend-store-products-variant-detail", operation: "getVariantDetail", duration: Date.now() - t0, status: "missing_slug" })
     throw new MedusaError(
       MedusaError.Types.INVALID_DATA,
       "slug query parameter is required"
@@ -21,7 +27,10 @@ export async function GET(
   const query = req.scope.resolve("query")
   const logger = req.scope.resolve("logger")
 
+  log({ level: "info", module: "backend-store-products-variant-detail", operation: "getVariantDetail", slug })
+
   // Query the product by handle (slug) with linked module data
+  const queryT0 = Date.now()
   const { data: products } = await query.graph({
     entity: "product",
     fields: [
@@ -54,6 +63,7 @@ export async function GET(
       handle: slug,
     },
   })
+  log({ level: "info", module: "backend-store-products-variant-detail", operation: "queryProduct", duration: Date.now() - queryT0, slug, entity: "product", filterKeys: "handle", found: products.length > 0 })
 
   if (!products || products.length === 0) {
     throw new MedusaError(
@@ -67,11 +77,13 @@ export async function GET(
   // Resolve linked cover person data if the link exists
   let coverPerson: any = null
   try {
+    const t2 = Date.now()
     const { data: linkedCoverPersons } = await query.graph({
       entity: "product_cover_person",
       fields: ["*"],
       filters: { product_id: product.id },
     })
+    log({ level: "info", module: "backend-store-products-variant-detail", operation: "queryCoverPerson", duration: Date.now() - t2, slug, productId: product.id, found: linkedCoverPersons.length > 0 })
     if (linkedCoverPersons && linkedCoverPersons.length > 0) {
       coverPerson = linkedCoverPersons[0]
     }
@@ -82,6 +94,7 @@ export async function GET(
   // Resolve product info template with shipping methods
   let productInfoTemplate: any = null
   try {
+    const t3 = Date.now()
     const { data: templates } = await query.graph({
       entity: "product_product_info_template",
       fields: [
@@ -90,6 +103,7 @@ export async function GET(
       ],
       filters: { product_id: product.id },
     })
+    log({ level: "info", module: "backend-store-products-variant-detail", operation: "queryInfoTemplate", duration: Date.now() - t3, slug, productId: product.id, found: templates.length > 0 })
     if (templates && templates.length > 0) {
       productInfoTemplate = templates[0]
     }
@@ -106,10 +120,14 @@ export async function GET(
       ? (product.metadata as any).materialCodes
       : [(product.metadata as any).materialCodes]
 
+    log({ level: "info", module: "backend-store-products-variant-detail", operation: "resolveMaterials", slug, productId: product.id, materialCodes })
+
     try {
+      const t4 = Date.now()
       const materialRecords: any[] = await materialService.listMaterials({
         code: materialCodes,
       })
+      log({ level: "info", module: "backend-store-products-variant-detail", operation: "listMaterials", duration: Date.now() - t4, materialCount: materialRecords.length })
 
       if (materialRecords.length > 0) {
         materials = await Promise.all(
@@ -150,6 +168,7 @@ export async function GET(
   }
 
   logger.info(`Variant detail retrieved: slug=${slug}`)
+  log({ level: "info", module: "backend-store-products-variant-detail", operation: "getVariantDetail", duration: Date.now() - t0, slug, status: "success", hasCoverPerson: !!coverPerson, hasInfoTemplate: !!productInfoTemplate, hasMaterials: !!materials })
 
   return res.json({
     product: {

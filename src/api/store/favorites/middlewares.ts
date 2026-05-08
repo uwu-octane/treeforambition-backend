@@ -7,6 +7,9 @@ export const ToggleFavoriteSchema = z.object({
 
 export type ToggleFavoriteSchemaType = z.infer<typeof ToggleFavoriteSchema>
 
+/** Favorites middleware config:
+ *  - GET /store/favorites: List favorite products (customer auth required)
+ *  - POST /store/favorites: Toggle a product favorite (customer auth + productSlug body) */
 export const favoriteMiddlewares: MiddlewareRoute[] = [
   {
     matcher: "/store/favorites",

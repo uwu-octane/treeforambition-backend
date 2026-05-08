@@ -7,6 +7,16 @@ class PostModuleService extends MedusaService({
   Post,
   PostBlock,
   PostParagraph,
-}) {}
+}) {
+  constructor(container?: any) {
+    super(container);
+    console.log(JSON.stringify({
+      ts: new Date().toISOString(),
+      module: "service-post",
+      operation: "init",
+      phase: "done",
+    }));
+  }
+}
 
 export default PostModuleService

@@ -2,10 +2,15 @@ import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { getOrdersListWorkflow } from "@medusajs/core-flows"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 
+const log = (entry: Record<string, unknown>) => {
+  console.log(JSON.stringify({ ts: new Date().toISOString(), ...entry }))
+}
+
 export async function GET(
   req: MedusaRequest,
   res: MedusaResponse
 ) {
+  const t0 = Date.now()
   const logger = req.scope.resolve("logger")
   const query = req.scope.resolve(ContainerRegistrationKeys.QUERY)
 
@@ -97,6 +102,7 @@ export async function GET(
   //    then filter orders by matching customer IDs.
   // ============================================================
   if (customerName) {
+    const t1 = Date.now()
     const { data: customers } = await query.graph({
       entity: "customer",
       fields: ["id"],
@@ -109,6 +115,7 @@ export async function GET(
       },
       pagination: { take: 500, skip: 0 },
     })
+    log({ level: "info", module: "adminOrders", operation: "queryCustomersByName", duration: Date.now() - t1, customerName, matchedCount: customers.length, entity: "customer" })
 
     const matchedCustomerIds = customers.map((c: any) => c.id)
     if (matchedCustomerIds.length > 0) {
@@ -117,6 +124,7 @@ export async function GET(
       }
     } else {
       // No matching customers — return empty result
+      log({ level: "info", module: "adminOrders", operation: "listOrders", duration: Date.now() - t0, status: "empty_customer_match" })
       return res.json({ orders: [], count: 0, offset: 0, limit: 0 })
     }
   }
@@ -159,7 +167,10 @@ export async function GET(
   // ============================================================
   const workflow = getOrdersListWorkflow(req.scope)
 
+  log({ level: "info", module: "adminOrders", operation: "runOrdersListWorkflow", filterCount: Object.keys(filters).length, needsExtraFetch, limit, offset })
+
   try {
+    const workflowT0 = Date.now()
     const { result } = await workflow.run({
       input: {
         fields,
@@ -171,6 +182,7 @@ export async function GET(
         },
       },
     })
+    log({ level: "info", module: "adminOrders", operation: "workflowRun", duration: Date.now() - workflowT0, needsExtraFetch, limit, offset })
 
     let { rows, metadata } = result
 
@@ -178,6 +190,7 @@ export async function GET(
     // 8. Post-filter for computed / nested fields
     // ============================================================
     if (needsPostFilter || itemCount || orderTag) {
+      const postFilterT0 = Date.now()
       // payment_status / fulfillment_status
       if (paymentStatus) {
         rows = rows.filter((o: any) => o.payment_status === paymentStatus)
@@ -240,6 +253,9 @@ export async function GET(
       logger.info(
         `[OrdersList] Post-filtered: total=${totalCount} returned=${pagedRows.length}`
       )
+      log({ level: "info", module: "adminOrders", operation: "postFilter", duration: Date.now() - postFilterT0, preFilterCount: rows.length + pagedRows.length - totalCount, postFilterCount: totalCount, returnedCount: pagedRows.length })
+
+      log({ level: "info", module: "adminOrders", operation: "listOrders", duration: Date.now() - t0, returnedCount: pagedRows.length, totalCount, status: "post_filtered" })
 
       return res.json({
         orders: pagedRows,
@@ -252,6 +268,8 @@ export async function GET(
     // ============================================================
     // 9. Standard response (no post-filtering)
     // ============================================================
+    log({ level: "info", module: "adminOrders", operation: "listOrders", duration: Date.now() - t0, returnedCount: rows.length, totalCount: metadata.count, status: "success" })
+
     return res.json({
       orders: rows,
       count: metadata.count,
@@ -259,7 +277,9 @@ export async function GET(
       limit: metadata.take,
     })
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
     logger.error(`[OrdersList] Error listing orders: ${error}`)
+    log({ level: "error", module: "adminOrders", operation: "listOrders", duration: Date.now() - t0, error: errorMessage })
     throw error
   }
 }

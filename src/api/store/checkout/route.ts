@@ -3,6 +3,10 @@ import { MedusaError, ContainerRegistrationKeys, Modules } from "@medusajs/frame
 import { completeCartWorkflow } from "@medusajs/medusa/core-flows"
 import { z } from "zod"
 
+const log = (entry: Record<string, unknown>) => {
+  console.log(JSON.stringify({ ts: new Date().toISOString(), ...entry }))
+}
+
 // Checkout request schema matching the frontend payload
 export const CheckoutRequestSchema = z.object({
   addressId: z.string().optional(),
@@ -26,6 +30,7 @@ export async function POST(
   req: AuthenticatedMedusaRequest<CheckoutRequest>,
   res: MedusaResponse
 ) {
+  const t0 = Date.now()
   const body = req.validatedBody
   const customerId = req.auth_context.actor_id
   const query = req.scope.resolve(ContainerRegistrationKeys.QUERY)
@@ -35,6 +40,9 @@ export async function POST(
   const link = req.scope.resolve(ContainerRegistrationKeys.LINK)
 
   const isMockPayment = process.env.PREVIEW_PAYMENT_MODE === "mock_success"
+  const itemCount = body.items?.length || 0
+
+  log({ level: "info", module: "backend-store-checkout", operation: "checkout", phase: "start", customerId, paymentMethod: body.paymentMethod, isMockPayment, itemCount })
 
   logger.info(
     `[Checkout] initiated customer=${customerId} mock=${isMockPayment} payment=${body.paymentMethod}`
@@ -44,6 +52,7 @@ export async function POST(
     // ============================================================
     // 1. Resolve store defaults (region and sales channel)
     // ============================================================
+    const t1 = Date.now()
     const { data: regions } = await query.graph({
       entity: "region",
       fields: ["id", "currency_code"],
@@ -67,9 +76,12 @@ export async function POST(
     })
     const salesChannelId = salesChannels?.[0]?.id
 
+    log({ level: "info", module: "backend-store-checkout", operation: "resolveStoreDefaults", duration: Date.now() - t1, regionId: region.id, salesChannelId })
+
     // ============================================================
     // 2. Resolve each item by product handle (productId) to variant ID
     // ============================================================
+    const t2 = Date.now()
     const lineItems: Array<{ variant_id: string; quantity: number }> = []
 
     for (const item of body.items) {
@@ -113,9 +125,12 @@ export async function POST(
       })
     }
 
+    log({ level: "info", module: "backend-store-checkout", operation: "resolveLineItems", duration: Date.now() - t2, lineItemCount: lineItems.length })
+
     // ============================================================
     // 3. Resolve shipping address
     // ============================================================
+    const t3 = Date.now()
     let shippingAddress: Record<string, any> | undefined
 
     if (body.addressId) {
@@ -159,9 +174,12 @@ export async function POST(
       }
     }
 
+    log({ level: "info", module: "backend-store-checkout", operation: "resolveShippingAddress", duration: Date.now() - t3, addressId: body.addressId || null, hasAddress: !!shippingAddress })
+
     // ============================================================
     // 4. Create the cart with items and shipping address
     // ============================================================
+    const t4 = Date.now()
     const cart = await cartModuleService.createCarts({
       currency_code: currencyCode,
       region_id: region.id,
@@ -178,10 +196,12 @@ export async function POST(
     })
 
     const cartId = cart.id
+    log({ level: "info", module: "backend-store-checkout", operation: "createCart", duration: Date.now() - t4, cartId })
 
     // ============================================================
     // 5. Add shipping method
     // ============================================================
+    const t5 = Date.now()
     if (body.shippingMethodLabel) {
       await cartModuleService.addShippingMethods(cartId, [
         {
@@ -190,10 +210,12 @@ export async function POST(
         },
       ])
     }
+    log({ level: "info", module: "backend-store-checkout", operation: "addShippingMethod", duration: Date.now() - t5, cartId, shippingMethodLabel: body.shippingMethodLabel || null })
 
     // ============================================================
     // 6. Create payment collection and session
     // ============================================================
+    const t6 = Date.now()
     // Determine the payment provider:
     // - Mock/preview mode -> use the built-in system provider (always succeeds)
     // - WeChat JSAPI       -> use the custom wechat payment provider
@@ -223,9 +245,12 @@ export async function POST(
       data: {},
     })
 
+    log({ level: "info", module: "backend-store-checkout", operation: "createPayment", duration: Date.now() - t6, paymentProvider, paymentCollectionId: paymentCollection.id, cartId })
+
     // ============================================================
     // 7. Complete the cart -> converts it to an order
     // ============================================================
+    const t7 = Date.now()
     const { result } = await completeCartWorkflow(req.scope).run({
       input: { id: cartId },
     })
@@ -245,6 +270,7 @@ export async function POST(
     }
 
     const order = workflowResult.order
+    log({ level: "info", module: "backend-store-checkout", operation: "completeCart", duration: Date.now() - t7, orderId: order.id, displayId: order.display_id })
 
     logger.info(
       `[Checkout] completed orderId=${order.id} displayId=${order.display_id}`
@@ -264,6 +290,8 @@ export async function POST(
       paySign: "mock_sign",
     }
 
+    log({ level: "info", module: "backend-store-checkout", operation: "checkout", phase: "response", duration: Date.now() - t0, orderId: order.id, displayId: order.display_id })
+
     return res.json({
       success: true,
       orderID: order.id,
@@ -272,12 +300,14 @@ export async function POST(
       paymentSession: body.paymentMethod === "wechat_jsapi" ? paymentData : undefined,
     })
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    log({ level: "error", module: "backend-store-checkout", operation: "checkout", phase: "error", duration: Date.now() - t0, customerId, itemCount, error: errorMessage })
     logger.error(
-      `[Checkout] failed: ${error instanceof Error ? error.message : String(error)}`
+      `[Checkout] failed: ${errorMessage}`
     )
     return res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : "Checkout failed",
+      error: errorMessage,
     })
   }
 }

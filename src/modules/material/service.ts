@@ -7,6 +7,16 @@ class MaterialModuleService extends MedusaService({
   Material,
   MaterialAssetRef,
   MaterialSearchTerm,
-}) {}
+}) {
+  constructor(container?: any) {
+    super(container);
+    console.log(JSON.stringify({
+      ts: new Date().toISOString(),
+      module: "service-material",
+      operation: "init",
+      phase: "done",
+    }));
+  }
+}
 
 export default MaterialModuleService

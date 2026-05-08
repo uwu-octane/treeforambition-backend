@@ -1,12 +1,19 @@
 import { AuthenticatedMedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 
+const log = (entry: Record<string, unknown>) => {
+  console.log(JSON.stringify({ ts: new Date().toISOString(), ...entry }))
+}
+
 export async function GET(
   req: AuthenticatedMedusaRequest,
   res: MedusaResponse
 ) {
+  const t0 = Date.now()
   const customerId = req.auth_context.actor_id
   const query = req.scope.resolve("query")
   const logger = req.scope.resolve("logger")
+
+  log({ level: "info", module: "backend-store-orders", operation: "listOrders", customerId })
 
   const { data: orders, metadata } = await query.graph({
     entity: "order",
@@ -34,6 +41,7 @@ export async function GET(
   })
 
   logger.info(`Orders retrieved for customer: ${customerId}, count: ${orders.length}`)
+  log({ level: "info", module: "backend-store-orders", operation: "listOrders", duration: Date.now() - t0, customerId, orderCount: orders.length, status: "success" })
 
   return res.json({
     orders,

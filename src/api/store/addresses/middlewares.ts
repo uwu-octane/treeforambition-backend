@@ -17,6 +17,10 @@ export const CreateAddressSchema = z.object({
 
 export type CreateAddressSchemaType = z.infer<typeof CreateAddressSchema>
 
+/** Customer address middleware config:
+ *  - GET /store/addresses: List own addresses (customer auth required)
+ *  - POST /store/addresses: Create a new address (customer auth + body validation)
+ *  - DELETE /store/addresses/:id: Delete an address by ID (customer auth required) */
 export const addressMiddlewares: MiddlewareRoute[] = [
   {
     matcher: "/store/addresses",

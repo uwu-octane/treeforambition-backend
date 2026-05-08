@@ -8,6 +8,37 @@ import { addressMiddlewares } from "./store/addresses/middlewares"
 import { PreviewLoginSchema } from "./store/preview-login/route"
 import { ImportBodySchema } from "./admin/materials-import/route"
 
+const logRequest = (req: any, res: any, next: any) => {
+  const t0 = Date.now()
+  const requestId = `${Date.now().toString(36)}${Math.random().toString(36).substring(2, 6)}`
+  console.log(JSON.stringify({
+    ts: new Date().toISOString(),
+    level: "info",
+    module: "http",
+    operation: "request",
+    requestId,
+    method: req.method,
+    path: req.path || req.url,
+    hasAuth: !!req.auth_context?.actor_id,
+  }))
+  const originalJson = res.json.bind(res)
+  res.json = function (body: any) {
+    console.log(JSON.stringify({
+      ts: new Date().toISOString(),
+      level: "info",
+      module: "http",
+      operation: "response",
+      requestId,
+      method: req.method,
+      path: req.path || req.url,
+      duration: Date.now() - t0,
+      statusCode: res.statusCode,
+    }))
+    return originalJson(body)
+  }
+  next?.()
+}
+
 export default defineMiddlewares({
   routes: [
     ...checkoutMiddlewares,
@@ -16,6 +47,14 @@ export default defineMiddlewares({
     ...orderMiddlewares,
     ...orderDetailMiddlewares,
     ...addressMiddlewares,
+    {
+      matcher: "/store/*",
+      middlewares: [logRequest],
+    },
+    {
+      matcher: "/admin/*",
+      middlewares: [logRequest],
+    },
     {
       matcher: "/store/preview-login",
       method: "POST",

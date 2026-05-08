@@ -1,15 +1,23 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 
+const log = (entry: Record<string, unknown>) => {
+  console.log(JSON.stringify({ ts: new Date().toISOString(), ...entry }))
+}
+
 export async function GET(
   req: MedusaRequest,
   res: MedusaResponse
 ) {
+  const t0 = Date.now()
   const query = req.scope.resolve("query")
   const logger = req.scope.resolve("logger")
+
+  log({ level: "info", module: "salesAnalysis", operation: "getSalesAnalysis" })
 
   logger.info("[SalesAnalysis] Fetching data")
 
   try {
+    const queryT0 = Date.now()
     const { data: orders } = await query.graph({
       entity: "order",
       fields: [
@@ -23,6 +31,7 @@ export async function GET(
       ],
       pagination: { take: 1000, skip: 0 },
     })
+    log({ level: "info", module: "salesAnalysis", operation: "queryOrders", duration: Date.now() - queryT0, entity: "order", orderCount: orders.length })
 
     const totalOrders = orders.length
     const totalRevenue = orders.reduce(
@@ -54,6 +63,8 @@ export async function GET(
       }
     }
 
+    log({ level: "info", module: "salesAnalysis", operation: "getSalesAnalysis", duration: Date.now() - t0, totalOrders, totalRevenue, totalItems, uniqueProducts: productMap.size, status: "success" })
+
     res.json({
       totalOrders,
       totalRevenue,
@@ -64,7 +75,9 @@ export async function GET(
       ),
     })
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
     logger.error(`[SalesAnalysis] Error: ${error}`)
+    log({ level: "error", module: "salesAnalysis", operation: "getSalesAnalysis", duration: Date.now() - t0, error: errorMessage })
     res.status(500).json({ error: "Failed to fetch sales analysis" })
   }
 }

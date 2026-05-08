@@ -1,6 +1,10 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { MedusaError } from "@medusajs/framework/utils"
 
+const log = (entry: Record<string, unknown>) => {
+  console.log(JSON.stringify({ ts: new Date().toISOString(), ...entry }))
+}
+
 function normalizeString(value: string | null | undefined): string | undefined {
   if (typeof value !== "string") return undefined
   const normalized = value.trim()
@@ -49,6 +53,7 @@ function buildCustomerNote({
 }
 
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
+  const t0 = Date.now()
   const { searchParams } = new URL(
     req.url,
     `http://${req.headers.host || "localhost"}`
@@ -73,6 +78,9 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const query = req.scope.resolve("query")
   const logger = req.scope.resolve("logger")
 
+  log({ level: "info", module: "backend-store-products-leaderboard", operation: "getLeaderboard", key, targetSlugCount: targetSlugs.length })
+
+  const queryT0 = Date.now()
   const { data: orders } = await query.graph({
     entity: "order",
     fields: [
@@ -89,6 +97,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       status: ["completed"],
     },
   })
+  log({ level: "info", module: "backend-store-products-leaderboard", operation: "queryOrders", duration: Date.now() - queryT0, orderCount: orders.length, entity: "order", filterKeys: "status" })
 
   const targetSlugSet = new Set(targetSlugs)
   const customerCopies = new Map<string, number>()
@@ -198,6 +207,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   logger.info(
     `Leaderboard retrieved: key=${key}, entries=${enrichedEntries.length}, totalSold=${totalSold}`
   )
+  log({ level: "info", module: "backend-store-products-leaderboard", operation: "getLeaderboard", duration: Date.now() - t0, key, entryCount: enrichedEntries.length, totalSold, status: "success" })
 
   return res.json({
     entries: enrichedEntries,
