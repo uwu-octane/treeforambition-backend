@@ -1,19 +1,37 @@
-import { loadEnv, defineConfig } from '@medusajs/framework/utils'
+import { defineConfig } from '@medusajs/framework/utils'
+import {
+  DATABASE_URL,
+  REDIS_URL,
+  STORE_CORS,
+  ADMIN_CORS,
+  AUTH_CORS,
+  JWT_SECRET,
+  COOKIE_SECRET,
+  WORKER_MODE,
+  MEDUSA_FILE_URL,
+  MEDUSA_FILE_ACCESS_KEY_ID,
+  MEDUSA_FILE_SECRET_ACCESS_KEY,
+  MEDUSA_FILE_REGION,
+  MEDUSA_FILE_BUCKET,
+  MEDUSA_FILE_ENDPOINT,
+  MEDUSA_FILE_PREFIX,
+  logEnvSummary,
+} from './src/lib/env'
 
-loadEnv(process.env.NODE_ENV || 'development', process.cwd())
+logEnvSummary()
 
 module.exports = defineConfig({
   projectConfig: {
-    databaseUrl: process.env.DATABASE_URL,
-    redisUrl: process.env.REDIS_URL,
+    databaseUrl: DATABASE_URL,
+    redisUrl: REDIS_URL,
     http: {
-      storeCors: process.env.STORE_CORS!,
-      adminCors: process.env.ADMIN_CORS!,
-      authCors: process.env.AUTH_CORS!,
-      jwtSecret: process.env.JWT_SECRET || "supersecret",
-      cookieSecret: process.env.COOKIE_SECRET || "supersecret",
+      storeCors: STORE_CORS,
+      adminCors: ADMIN_CORS,
+      authCors: AUTH_CORS,
+      jwtSecret: JWT_SECRET,
+      cookieSecret: COOKIE_SECRET,
     },
-    workerMode: (process.env.WORKER_MODE as "shared" | "worker" | "server") || "shared",
+    workerMode: WORKER_MODE,
   },
   modules: [
     { resolve: "./src/modules/coverPerson" },
@@ -49,13 +67,13 @@ module.exports = defineConfig({
             resolve: "@medusajs/medusa/file-s3",
             id: "s3",
             options: {
-              file_url: process.env.MEDUSA_FILE_URL || "https://cdn.treeparis.cn",
-              access_key_id: process.env.MEDUSA_FILE_ACCESS_KEY_ID,
-              secret_access_key: process.env.MEDUSA_FILE_SECRET_ACCESS_KEY,
-              region: process.env.MEDUSA_FILE_REGION || "ap-guangzhou",
-              bucket: process.env.MEDUSA_FILE_BUCKET || "magazin-1313679194",
-              endpoint: process.env.MEDUSA_FILE_ENDPOINT || "https://cos.ap-guangzhou.myqcloud.com",
-              prefix: process.env.MEDUSA_FILE_PREFIX || "products/",
+              file_url: MEDUSA_FILE_URL,
+              access_key_id: MEDUSA_FILE_ACCESS_KEY_ID,
+              secret_access_key: MEDUSA_FILE_SECRET_ACCESS_KEY,
+              region: MEDUSA_FILE_REGION,
+              bucket: MEDUSA_FILE_BUCKET,
+              endpoint: MEDUSA_FILE_ENDPOINT,
+              prefix: MEDUSA_FILE_PREFIX,
             },
           },
         ],

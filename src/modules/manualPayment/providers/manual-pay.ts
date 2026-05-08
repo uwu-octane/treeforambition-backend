@@ -1,4 +1,5 @@
 import { AbstractPaymentProvider } from "@medusajs/framework/utils"
+import { PREVIEW_PAYMENT_MODE } from "../../../lib/env"
 import type {
   InitiatePaymentInput, InitiatePaymentOutput,
   AuthorizePaymentInput, AuthorizePaymentOutput,
@@ -36,8 +37,7 @@ class ManualPayProvider extends AbstractPaymentProvider {
 
   async initiatePayment(input: InitiatePaymentInput): Promise<InitiatePaymentOutput> {
     const t0 = Date.now()
-    this.logger_.info("[ManualPay] initiatePayment called")
-    log({ level: "info", module: "manualPayment", operation: "initiatePayment", currencyCode: input.currency_code, amount: input.amount })
+    log({ level: "info", module: "provider-manualPayment", operation: "initiatePayment", currencyCode: input.currency_code, amount: input.amount })
     const result = {
       id: makeManualId(),
       data: {
@@ -45,27 +45,25 @@ class ManualPayProvider extends AbstractPaymentProvider {
         initiatedAt: new Date().toISOString(),
       },
     }
-    log({ level: "info", module: "manualPayment", operation: "initiatePayment", duration: Date.now() - t0, paymentId: result.id, status: "success" })
+    log({ level: "info", module: "provider-manualPayment", operation: "initiatePayment", duration: Date.now() - t0, paymentId: result.id, status: "success" })
     return result
   }
 
   async authorizePayment(input: AuthorizePaymentInput): Promise<AuthorizePaymentOutput> {
     const t0 = Date.now()
-    const isMockSuccess = process.env.PREVIEW_PAYMENT_MODE === "mock_success"
-    this.logger_.info("[ManualPay] authorizePayment called")
-    log({ level: "info", module: "manualPayment", operation: "authorizePayment", isMockSuccess })
+    const isMockSuccess = PREVIEW_PAYMENT_MODE === "mock_success"
+    log({ level: "info", module: "provider-manualPayment", operation: "authorizePayment", isMockSuccess })
     const result = {
       status: isMockSuccess ? "authorized" : "pending",
       data: input.data ?? {},
     }
-    log({ level: "info", module: "manualPayment", operation: "authorizePayment", duration: Date.now() - t0, status: result.status })
+    log({ level: "info", module: "provider-manualPayment", operation: "authorizePayment", duration: Date.now() - t0, status: result.status })
     return result
   }
 
   async capturePayment(input: CapturePaymentInput): Promise<CapturePaymentOutput> {
     const t0 = Date.now()
-    this.logger_.info("[ManualPay] capturePayment called")
-    log({ level: "info", module: "manualPayment", operation: "capturePayment" })
+    log({ level: "info", module: "provider-manualPayment", operation: "capturePayment" })
     const result = {
       data: {
         ...(input.data ?? {}),
@@ -73,68 +71,66 @@ class ManualPayProvider extends AbstractPaymentProvider {
         confirmedAt: new Date().toISOString(),
       },
     }
-    log({ level: "info", module: "manualPayment", operation: "capturePayment", duration: Date.now() - t0, status: "success" })
+    log({ level: "info", module: "provider-manualPayment", operation: "capturePayment", duration: Date.now() - t0, status: "success" })
     return result
   }
 
   async cancelPayment(input: CancelPaymentInput): Promise<CancelPaymentOutput> {
     const t0 = Date.now()
-    this.logger_.info("[ManualPay] cancelPayment called")
-    log({ level: "info", module: "manualPayment", operation: "cancelPayment" })
+    log({ level: "info", module: "provider-manualPayment", operation: "cancelPayment" })
     const result = { data: input.data ?? {} }
-    log({ level: "info", module: "manualPayment", operation: "cancelPayment", duration: Date.now() - t0, status: "success" })
+    log({ level: "info", module: "provider-manualPayment", operation: "cancelPayment", duration: Date.now() - t0, status: "success" })
     return result
   }
 
   async refundPayment(input: RefundPaymentInput): Promise<RefundPaymentOutput> {
     const t0 = Date.now()
-    this.logger_.info("[ManualPay] refundPayment called")
-    log({ level: "info", module: "manualPayment", operation: "refundPayment" })
+    log({ level: "info", module: "provider-manualPayment", operation: "refundPayment" })
     const result = { data: { ...(input.data ?? {}), refunded: true } }
-    log({ level: "info", module: "manualPayment", operation: "refundPayment", duration: Date.now() - t0, status: "success" })
+    log({ level: "info", module: "provider-manualPayment", operation: "refundPayment", duration: Date.now() - t0, status: "success" })
     return result
   }
 
   async retrievePayment(input: RetrievePaymentInput): Promise<RetrievePaymentOutput> {
     const t0 = Date.now()
-    log({ level: "info", module: "manualPayment", operation: "retrievePayment" })
+    log({ level: "info", module: "provider-manualPayment", operation: "retrievePayment" })
     const result = { data: input.data ?? {} }
-    log({ level: "info", module: "manualPayment", operation: "retrievePayment", duration: Date.now() - t0, status: "success" })
+    log({ level: "info", module: "provider-manualPayment", operation: "retrievePayment", duration: Date.now() - t0, status: "success" })
     return result
   }
 
   async updatePayment(input: UpdatePaymentInput): Promise<UpdatePaymentOutput> {
     const t0 = Date.now()
-    log({ level: "info", module: "manualPayment", operation: "updatePayment" })
+    log({ level: "info", module: "provider-manualPayment", operation: "updatePayment" })
     const result = { data: input.data ?? {} }
-    log({ level: "info", module: "manualPayment", operation: "updatePayment", duration: Date.now() - t0, status: "success" })
+    log({ level: "info", module: "provider-manualPayment", operation: "updatePayment", duration: Date.now() - t0, status: "success" })
     return result
   }
 
   async deletePayment(input: DeletePaymentInput): Promise<DeletePaymentOutput> {
     const t0 = Date.now()
-    log({ level: "info", module: "manualPayment", operation: "deletePayment" })
+    log({ level: "info", module: "provider-manualPayment", operation: "deletePayment" })
     const result = { data: input.data ?? {} }
-    log({ level: "info", module: "manualPayment", operation: "deletePayment", duration: Date.now() - t0, status: "success" })
+    log({ level: "info", module: "provider-manualPayment", operation: "deletePayment", duration: Date.now() - t0, status: "success" })
     return result
   }
 
   async getPaymentStatus(input: GetPaymentStatusInput): Promise<GetPaymentStatusOutput> {
     const t0 = Date.now()
-    const isMockSuccess = process.env.PREVIEW_PAYMENT_MODE === "mock_success"
-    log({ level: "info", module: "manualPayment", operation: "getPaymentStatus", isMockSuccess })
+    const isMockSuccess = PREVIEW_PAYMENT_MODE === "mock_success"
+    log({ level: "info", module: "provider-manualPayment", operation: "getPaymentStatus", isMockSuccess })
     if (isMockSuccess) {
-      log({ level: "info", module: "manualPayment", operation: "getPaymentStatus", duration: Date.now() - t0, status: "captured" })
+      log({ level: "info", module: "provider-manualPayment", operation: "getPaymentStatus", duration: Date.now() - t0, status: "captured" })
       return { status: "captured", data: input.data ?? {} }
     }
-    log({ level: "info", module: "manualPayment", operation: "getPaymentStatus", duration: Date.now() - t0, status: "pending" })
+    log({ level: "info", module: "provider-manualPayment", operation: "getPaymentStatus", duration: Date.now() - t0, status: "pending" })
     return { status: "pending", data: input.data ?? {} }
   }
 
   async getWebhookActionAndData(
     _payload: ProviderWebhookPayload["payload"]
   ): Promise<WebhookActionResult> {
-    log({ level: "info", module: "manualPayment", operation: "getWebhookActionAndData", action: "not_supported" })
+    log({ level: "info", module: "provider-manualPayment", operation: "getWebhookActionAndData", action: "not_supported" })
     return { action: "not_supported" }
   }
 }

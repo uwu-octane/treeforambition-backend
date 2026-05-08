@@ -2,6 +2,7 @@ import { AuthenticatedMedusaRequest, MedusaResponse } from "@medusajs/framework/
 import { MedusaError, ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
 import { completeCartWorkflow } from "@medusajs/medusa/core-flows"
 import { z } from "zod"
+import { PREVIEW_PAYMENT_MODE, WECHAT_SERVICE_APP_ID } from "../../../lib/env"
 
 const log = (entry: Record<string, unknown>) => {
   console.log(JSON.stringify({ ts: new Date().toISOString(), ...entry }))
@@ -39,7 +40,7 @@ export async function POST(
   const paymentModuleService = req.scope.resolve(Modules.PAYMENT)
   const link = req.scope.resolve(ContainerRegistrationKeys.LINK)
 
-  const isMockPayment = process.env.PREVIEW_PAYMENT_MODE === "mock_success"
+  const isMockPayment = PREVIEW_PAYMENT_MODE === "mock_success"
   const itemCount = body.items?.length || 0
 
   log({ level: "info", module: "backend-store-checkout", operation: "checkout", phase: "start", customerId, paymentMethod: body.paymentMethod, isMockPayment, itemCount })
@@ -282,7 +283,7 @@ export async function POST(
     const mockPrepayId = `prepay_mock_${Date.now().toString(36)}`
     const paymentData = {
       prepayId: mockPrepayId,
-      appId: process.env.WECHAT_SERVICE_APP_ID || "mock_app_id",
+      appId: WECHAT_SERVICE_APP_ID || "mock_app_id",
       timeStamp: String(Math.floor(Date.now() / 1000)),
       nonceStr: Math.random().toString(36).substring(2),
       package: `prepay_id=${mockPrepayId}`,

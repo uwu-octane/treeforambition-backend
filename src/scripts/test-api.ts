@@ -1,3 +1,5 @@
+import { DATABASE_URL } from "../lib/env"
+
 /**
  * Comprehensive API integration test script
  *
@@ -153,7 +155,7 @@ export default async function runTests() {
   // -----------------------------------------------------------------------
   console.log("\n10. Database Verification")
   const { Client } = require("pg")
-  const client = new Client({ connectionString: process.env.DATABASE_URL || "postgres://postgres@localhost/medusa_backend" })
+  const client = new Client({ connectionString: DATABASE_URL || "postgres://postgres@localhost/medusa_backend" })
   await client.connect()
 
   // Check cover_person table

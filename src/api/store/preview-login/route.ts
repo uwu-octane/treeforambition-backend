@@ -1,6 +1,15 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { MedusaError } from "@medusajs/framework/utils"
+import { createHmac, timingSafeEqual } from "node:crypto"
 import { z } from "zod"
+import {
+  MEDUSA_BACKEND_URL,
+  NODE_ENV,
+  PREVIEW_LOGIN_SECRET,
+  TEST_CUSTOMER_EMAIL,
+  TEST_CUSTOMER_PASSWORD,
+  TFB_RUNTIME_ENV,
+} from "../../../lib/env"
 
 const log = (entry: Record<string, unknown>) => {
   console.log(JSON.stringify({ ts: new Date().toISOString(), ...entry }))
@@ -14,9 +23,6 @@ export type PreviewLoginRequest = z.infer<typeof PreviewLoginSchema>
 
 type JsonBody = Record<string, unknown>
 
-const DEFAULT_TEST_CUSTOMER_EMAIL = "preview-test@customer.treeforambition.local"
-const DEFAULT_TEST_CUSTOMER_PASSWORD = "preview-test-password-123"
-
 const normalizeString = (value: unknown) => {
   if (typeof value !== "string") {
     return undefined
@@ -27,25 +33,113 @@ const normalizeString = (value: unknown) => {
 }
 
 const readTestCustomerCredentials = () => {
-  const email =
-    normalizeString(process.env.TEST_CUSTOMER_EMAIL) ??
-    normalizeString(process.env.PREVIEW_TEST_CUSTOMER_EMAIL) ??
-    DEFAULT_TEST_CUSTOMER_EMAIL
-  const password =
-    normalizeString(process.env.TEST_CUSTOMER_PASSWORD) ??
-    normalizeString(process.env.PREVIEW_TEST_CUSTOMER_PASSWORD) ??
-    DEFAULT_TEST_CUSTOMER_PASSWORD
+  const email = normalizeString(TEST_CUSTOMER_EMAIL)
+  const password = normalizeString(TEST_CUSTOMER_PASSWORD)
+
+  if (!email || !password) {
+    throw new MedusaError(
+      MedusaError.Types.INVALID_DATA,
+      "Preview test customer credentials are not configured"
+    )
+  }
 
   return { email, password }
 }
 
 const isNonProductionTestLoginEnabled = () =>
-  process.env.NODE_ENV !== "production" || process.env.TFB_RUNTIME_ENV === "preview"
+  NODE_ENV !== "production" || TFB_RUNTIME_ENV === "preview"
+
+const PREVIEW_LOGIN_SIGNATURE_MAX_AGE_MS = 5 * 60 * 1000
+
+const requiresPreviewLoginSignature = () => TFB_RUNTIME_ENV === "preview"
+
+const safeEqual = (left: string, right: string) => {
+  const leftBuffer = Buffer.from(left)
+  const rightBuffer = Buffer.from(right)
+
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer)
+}
+
+const readHeaderValue = (value: string | string[] | undefined) =>
+  Array.isArray(value) ? normalizeString(value[0]) : normalizeString(value)
+
+const buildPreviewLoginSignaturePayload = ({
+  returnTo,
+  timestamp,
+}: {
+  returnTo?: string
+  timestamp: string
+}) => `${timestamp}.${returnTo ?? ""}`
+
+const createPreviewLoginSignature = ({
+  returnTo,
+  secret,
+  timestamp,
+}: {
+  returnTo?: string
+  secret: string
+  timestamp: string
+}) =>
+  createHmac("sha256", secret)
+    .update(buildPreviewLoginSignaturePayload({ returnTo, timestamp }))
+    .digest("hex")
+
+const assertPreviewLoginSignature = (req: MedusaRequest<PreviewLoginRequest>) => {
+  if (!requiresPreviewLoginSignature()) {
+    return
+  }
+
+  const secret = normalizeString(PREVIEW_LOGIN_SECRET)
+  const timestamp = readHeaderValue(req.headers["x-preview-login-timestamp"])
+  const signature = readHeaderValue(req.headers["x-preview-login-signature"])
+
+  if (!secret) {
+    log({
+      level: "error",
+      module: "backend-store-preview-login",
+      operation: "authorizePreviewLogin",
+      phase: "error",
+      reason: "missing_preview_login_secret_config",
+    })
+    throw new MedusaError(MedusaError.Types.NOT_FOUND, "Not found")
+  }
+
+  const timestampMs = timestamp ? Number(timestamp) : Number.NaN
+  const expired =
+    !Number.isFinite(timestampMs) ||
+    Math.abs(Date.now() - timestampMs) > PREVIEW_LOGIN_SIGNATURE_MAX_AGE_MS
+
+  if (!timestamp || !signature || expired) {
+    log({
+      level: "warn",
+      module: "backend-store-preview-login",
+      operation: "authorizePreviewLogin",
+      phase: "error",
+      reason: expired ? "expired_signature" : "missing_signature",
+    })
+    throw new MedusaError(MedusaError.Types.UNAUTHORIZED, "Unauthorized")
+  }
+
+  const expectedSignature = createPreviewLoginSignature({
+    returnTo: normalizeString(req.validatedBody?.returnTo),
+    secret,
+    timestamp,
+  })
+
+  if (!safeEqual(signature, expectedSignature)) {
+    log({
+      level: "warn",
+      module: "backend-store-preview-login",
+      operation: "authorizePreviewLogin",
+      phase: "error",
+      reason: "invalid_signature",
+    })
+    throw new MedusaError(MedusaError.Types.UNAUTHORIZED, "Unauthorized")
+  }
+}
 
 const getBackendOrigin = (req: MedusaRequest) => {
-  const configuredOrigin =
-    normalizeString(process.env.MEDUSA_BACKEND_URL) ??
-    normalizeString(process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL)
+  const configuredOrigin = normalizeString(MEDUSA_BACKEND_URL)
 
   if (configuredOrigin) {
     return configuredOrigin.replace(/\/+$/, "")
@@ -355,24 +449,39 @@ export async function POST(
 ) {
   const t0 = Date.now()
   if (!isNonProductionTestLoginEnabled()) {
-    log({ level: "warn", module: "backend-store-preview-login", operation: "login", duration: Date.now() - t0, status: "disabled" })
+    log({ level: "warn", module: "backend-store-preview-login", operation: "login", phase: "error", duration: Date.now() - t0 })
     throw new MedusaError(MedusaError.Types.NOT_FOUND, "Not found")
   }
+
+  assertPreviewLoginSignature(req)
 
   const { email, password } = readTestCustomerCredentials()
   const origin = getBackendOrigin(req)
   const publishableKey = getPublishableKeyHeader(req)
 
-  log({ level: "info", module: "backend-store-preview-login", operation: "login", email, origin })
+  log({ level: "info", module: "backend-store-preview-login", operation: "login", phase: "start", email, origin })
 
-  const token = await ensureTestCustomerCanLogin({
-    origin,
-    email,
-    password,
-    publishableKey,
-  })
+  try {
+    const token = await ensureTestCustomerCanLogin({
+      origin,
+      email,
+      password,
+      publishableKey,
+    })
 
-  log({ level: "info", module: "backend-store-preview-login", operation: "login", duration: Date.now() - t0, email, status: "success", hasToken: !!token })
+    log({ level: "info", module: "backend-store-preview-login", operation: "login", phase: "response", duration: Date.now() - t0, email })
 
-  return res.json({ token })
+    return res.json({ token })
+  } catch (error) {
+    console.error(JSON.stringify({
+      ts: new Date().toISOString(),
+      module: "backend-store-preview-login",
+      operation: "login",
+      phase: "error",
+      duration: Date.now() - t0,
+      email,
+      message: error instanceof Error ? error.message : String(error),
+    }))
+    throw error;
+  }
 }

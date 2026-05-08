@@ -20,6 +20,7 @@ import { Client } from "pg";
 import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
+import { DATABASE_URL, SUPABASE_DATA_FILE, DRY_RUN, SKIP_TABLES } from "../lib/env";
 const randomUUID = crypto.randomUUID.bind(crypto);
 
 // ---------------------------------------------------------------------------
@@ -1436,14 +1437,11 @@ export default async function importSupabaseData({
 }) {
   const logger = container.resolve(ContainerRegistrationKeys.LOGGER);
 
-  const databaseUrl =
-    process.env.DATABASE_URL || "postgres://postgres@localhost/medusa_backend";
-  const dataFile =
-    process.env.SUPABASE_DATA_FILE ||
-    path.resolve(process.cwd(), "../../../supabase/data.sql");
-  const dryRun = process.env.DRY_RUN === "true";
+  const databaseUrl = DATABASE_URL || "postgres://postgres@localhost/medusa_backend";
+  const dataFile = SUPABASE_DATA_FILE || path.resolve(process.cwd(), "../../../supabase/data.sql");
+  const dryRun = DRY_RUN === "true";
   const skipTables = new Set(
-    (process.env.SKIP_TABLES || "").split(",").map((s) => s.trim()).filter(Boolean)
+    SKIP_TABLES.split(",").map((s) => s.trim()).filter(Boolean)
   );
 
   logger.info("=== Supabase to Medusa Data Import ===");

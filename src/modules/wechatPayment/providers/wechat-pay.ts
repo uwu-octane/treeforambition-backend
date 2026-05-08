@@ -13,6 +13,7 @@ import type {
   Logger,
 } from "@medusajs/framework/types"
 import { isMockSuccess, isMockFail, makeMockId } from "../preview"
+import { WECHAT_SERVICE_APP_ID } from "../../../lib/env"
 
 type InjectedDependencies = {
   logger: Logger
@@ -33,18 +34,17 @@ class WechatPayProvider extends AbstractPaymentProvider {
 
   async initiatePayment(input: InitiatePaymentInput): Promise<InitiatePaymentOutput> {
     const t0 = Date.now()
-    this.logger_.info("[WeChatPay] initiatePayment called (mock mode)")
-    log({ level: "info", module: "wechatPayment", operation: "initiatePayment", currencyCode: input.currency_code, amount: input.amount })
+    log({ level: "info", module: "provider-wechatPayment", operation: "initiatePayment", currencyCode: input.currency_code, amount: input.amount })
 
     if (isMockFail()) {
-      log({ level: "warn", module: "wechatPayment", operation: "initiatePayment", duration: Date.now() - t0, status: "mock_fail" })
+      log({ level: "warn", module: "provider-wechatPayment", operation: "initiatePayment", duration: Date.now() - t0, status: "mock_fail" })
       return { id: makeMockId(), status: "pending", data: { error: "mock_fail" } }
     }
 
     const prepayId = `prepay_mock_${makeMockId()}`
-    const appId = process.env.WECHAT_SERVICE_APP_ID || "mock_app_id"
+    const appId = WECHAT_SERVICE_APP_ID || "mock_app_id"
 
-    log({ level: "info", module: "wechatPayment", operation: "initiatePayment", duration: Date.now() - t0, prepayId, status: "success" })
+    log({ level: "info", module: "provider-wechatPayment", operation: "initiatePayment", duration: Date.now() - t0, prepayId, status: "success" })
 
     return {
       id: prepayId,
@@ -65,45 +65,41 @@ class WechatPayProvider extends AbstractPaymentProvider {
 
   async authorizePayment(input: AuthorizePaymentInput): Promise<AuthorizePaymentOutput> {
     const t0 = Date.now()
-    this.logger_.info("[WeChatPay] authorizePayment called")
-    log({ level: "info", module: "wechatPayment", operation: "authorizePayment" })
+    log({ level: "info", module: "provider-wechatPayment", operation: "authorizePayment" })
     const result = { status: "authorized" as const, data: input.data ?? {} }
-    log({ level: "info", module: "wechatPayment", operation: "authorizePayment", duration: Date.now() - t0, status: result.status })
+    log({ level: "info", module: "provider-wechatPayment", operation: "authorizePayment", duration: Date.now() - t0, status: result.status })
     return result
   }
 
   async capturePayment(input: CapturePaymentInput): Promise<CapturePaymentOutput> {
     const t0 = Date.now()
-    this.logger_.info("[WeChatPay] capturePayment called")
-    log({ level: "info", module: "wechatPayment", operation: "capturePayment" })
+    log({ level: "info", module: "provider-wechatPayment", operation: "capturePayment" })
     const result = { data: { ...(input.data ?? {}), captured: true, transactionId: `txn_mock_${makeMockId()}` } }
-    log({ level: "info", module: "wechatPayment", operation: "capturePayment", duration: Date.now() - t0, status: "success" })
+    log({ level: "info", module: "provider-wechatPayment", operation: "capturePayment", duration: Date.now() - t0, status: "success" })
     return result
   }
 
   async cancelPayment(input: CancelPaymentInput): Promise<CancelPaymentOutput> {
     const t0 = Date.now()
-    this.logger_.info("[WeChatPay] cancelPayment called")
-    log({ level: "info", module: "wechatPayment", operation: "cancelPayment" })
+    log({ level: "info", module: "provider-wechatPayment", operation: "cancelPayment" })
     const result = { data: { ...(input.data ?? {}), tradeState: "CLOSED" } }
-    log({ level: "info", module: "wechatPayment", operation: "cancelPayment", duration: Date.now() - t0, status: "success" })
+    log({ level: "info", module: "provider-wechatPayment", operation: "cancelPayment", duration: Date.now() - t0, status: "success" })
     return result
   }
 
   async refundPayment(input: RefundPaymentInput): Promise<RefundPaymentOutput> {
     const t0 = Date.now()
-    this.logger_.info("[WeChatPay] refundPayment called")
-    log({ level: "info", module: "wechatPayment", operation: "refundPayment" })
+    log({ level: "info", module: "provider-wechatPayment", operation: "refundPayment" })
     const result = { data: { ...(input.data ?? {}), refunded: true, refundId: `ref_mock_${makeMockId()}` } }
-    log({ level: "info", module: "wechatPayment", operation: "refundPayment", duration: Date.now() - t0, status: "success" })
+    log({ level: "info", module: "provider-wechatPayment", operation: "refundPayment", duration: Date.now() - t0, status: "success" })
     return result
   }
 
   async retrievePayment(input: RetrievePaymentInput): Promise<RetrievePaymentOutput> {
     const t0 = Date.now()
-    log({ level: "info", module: "wechatPayment", operation: "retrievePayment" })
+    log({ level: "info", module: "provider-wechatPayment", operation: "retrievePayment" })
     if (isMockSuccess()) {
-      log({ level: "info", module: "wechatPayment", operation: "retrievePayment", duration: Date.now() - t0, status: "mock_success" })
+      log({ level: "info", module: "provider-wechatPayment", operation: "retrievePayment", duration: Date.now() - t0, status: "mock_success" })
       return {
         data: {
           ...(input.data ?? {}),
@@ -113,38 +109,38 @@ class WechatPayProvider extends AbstractPaymentProvider {
         },
       }
     }
-    log({ level: "info", module: "wechatPayment", operation: "retrievePayment", duration: Date.now() - t0, status: "pending" })
+    log({ level: "info", module: "provider-wechatPayment", operation: "retrievePayment", duration: Date.now() - t0, status: "pending" })
     return { data: input.data ?? {} }
   }
 
   async updatePayment(input: UpdatePaymentInput): Promise<UpdatePaymentOutput> {
     const t0 = Date.now()
-    log({ level: "info", module: "wechatPayment", operation: "updatePayment" })
+    log({ level: "info", module: "provider-wechatPayment", operation: "updatePayment" })
     const result = { data: input.data ?? {} }
-    log({ level: "info", module: "wechatPayment", operation: "updatePayment", duration: Date.now() - t0, status: "success" })
+    log({ level: "info", module: "provider-wechatPayment", operation: "updatePayment", duration: Date.now() - t0, status: "success" })
     return result
   }
 
   async deletePayment(input: DeletePaymentInput): Promise<DeletePaymentOutput> {
     const t0 = Date.now()
-    log({ level: "info", module: "wechatPayment", operation: "deletePayment" })
+    log({ level: "info", module: "provider-wechatPayment", operation: "deletePayment" })
     const result = { data: input.data ?? {} }
-    log({ level: "info", module: "wechatPayment", operation: "deletePayment", duration: Date.now() - t0, status: "success" })
+    log({ level: "info", module: "provider-wechatPayment", operation: "deletePayment", duration: Date.now() - t0, status: "success" })
     return result
   }
 
   async getPaymentStatus(input: GetPaymentStatusInput): Promise<GetPaymentStatusOutput> {
     const t0 = Date.now()
-    log({ level: "info", module: "wechatPayment", operation: "getPaymentStatus" })
+    log({ level: "info", module: "provider-wechatPayment", operation: "getPaymentStatus" })
     if (isMockSuccess()) {
-      log({ level: "info", module: "wechatPayment", operation: "getPaymentStatus", duration: Date.now() - t0, status: "captured" })
+      log({ level: "info", module: "provider-wechatPayment", operation: "getPaymentStatus", duration: Date.now() - t0, status: "captured" })
       return { status: "captured", data: { ...(input.data ?? {}), tradeState: "SUCCESS" } }
     }
     if (isMockFail()) {
-      log({ level: "info", module: "wechatPayment", operation: "getPaymentStatus", duration: Date.now() - t0, status: "canceled" })
+      log({ level: "info", module: "provider-wechatPayment", operation: "getPaymentStatus", duration: Date.now() - t0, status: "canceled" })
       return { status: "canceled", data: { ...(input.data ?? {}), tradeState: "PAYERROR" } }
     }
-    log({ level: "info", module: "wechatPayment", operation: "getPaymentStatus", duration: Date.now() - t0, status: "pending" })
+    log({ level: "info", module: "provider-wechatPayment", operation: "getPaymentStatus", duration: Date.now() - t0, status: "pending" })
     return { status: "pending", data: input.data ?? {} }
   }
 
@@ -152,12 +148,11 @@ class WechatPayProvider extends AbstractPaymentProvider {
     payload: ProviderWebhookPayload["payload"]
   ): Promise<WebhookActionResult> {
     const t0 = Date.now()
-    this.logger_.info("[WeChatPay] getWebhookActionAndData called")
     const data = payload.data as Record<string, unknown> | undefined
-    log({ level: "info", module: "wechatPayment", operation: "getWebhookActionAndData" })
+    log({ level: "info", module: "provider-wechatPayment", operation: "getWebhookActionAndData" })
 
     if (isMockSuccess()) {
-      log({ level: "info", module: "wechatPayment", operation: "getWebhookActionAndData", duration: Date.now() - t0, action: "authorized", status: "success" })
+      log({ level: "info", module: "provider-wechatPayment", operation: "getWebhookActionAndData", duration: Date.now() - t0, action: "authorized", status: "success" })
       return {
         action: "authorized",
         data: {
@@ -167,7 +162,7 @@ class WechatPayProvider extends AbstractPaymentProvider {
       }
     }
 
-    log({ level: "info", module: "wechatPayment", operation: "getWebhookActionAndData", duration: Date.now() - t0, action: "not_supported" })
+    log({ level: "info", module: "provider-wechatPayment", operation: "getWebhookActionAndData", duration: Date.now() - t0, action: "not_supported" })
     return { action: "not_supported" }
   }
 }
