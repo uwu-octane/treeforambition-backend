@@ -31,7 +31,7 @@ export async function GET(
   const customerExtensionService = req.scope.resolve("customerExtension")
   const logger = req.scope.resolve("logger")
 
-  let filter: Record<string, string>
+  let filter: Record<string, string> = {}
 
   try {
     if (!phone && !wechatOpenId && !wechatUnionId) {
@@ -93,6 +93,7 @@ export async function GET(
         extension: {
           phone: ext.phone,
           phone_verified_at: ext.phoneVerifiedAt,
+          wechat_app_id: ext.wechatAppId,
           wechat_open_id: ext.wechatOpenId,
           wechat_union_id: ext.wechatUnionId,
           wechat_nickname: ext.wechatNickname,

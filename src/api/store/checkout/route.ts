@@ -224,8 +224,8 @@ export async function POST(
     const paymentProvider = isMockPayment
       ? "pp_system_default"
       : body.paymentMethod === "wechat_jsapi"
-        ? "wechat_default"
-        : "manual_default"
+        ? "pp_wechat_jsapi_default"
+        : "pp_manual_default"
 
     const [paymentCollection] = await paymentModuleService.createPaymentCollections({
       currency_code: currencyCode,

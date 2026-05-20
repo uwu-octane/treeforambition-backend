@@ -5,6 +5,7 @@ const CustomerExtension = model.define("customer_extension", {
   customerId: model.text().unique(), // links to Medusa customer
   phone: model.text().unique().nullable(),
   phoneVerifiedAt: model.dateTime().nullable(),
+  wechatAppId: model.text().nullable(),
   wechatOpenId: model.text().unique().nullable(),
   wechatUnionId: model.text().unique().nullable(),
   wechatNickname: model.text().nullable(),

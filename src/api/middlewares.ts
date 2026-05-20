@@ -6,6 +6,7 @@ import { orderMiddlewares } from "./store/orders/middlewares"
 import { orderDetailMiddlewares } from "./store/orders/[id]/middlewares"
 import { addressMiddlewares } from "./store/addresses/middlewares"
 import { PreviewLoginSchema } from "./store/preview-login/route"
+import { WechatAuthCallbackSchema } from "./store/wechat-auth/callback/route"
 import { ImportBodySchema } from "./admin/materials-import/route"
 
 const logRequest = (req: any, res: any, next: any) => {
@@ -60,6 +61,13 @@ export default defineMiddlewares({
       method: "POST",
       middlewares: [
         validateAndTransformBody(PreviewLoginSchema),
+      ],
+    },
+    {
+      matcher: "/store/wechat-auth/callback",
+      method: "POST",
+      middlewares: [
+        validateAndTransformBody(WechatAuthCallbackSchema),
       ],
     },
     {

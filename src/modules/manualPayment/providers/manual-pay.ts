@@ -54,7 +54,7 @@ class ManualPayProvider extends AbstractPaymentProvider {
     const isMockSuccess = PREVIEW_PAYMENT_MODE === "mock_success"
     log({ level: "info", module: "provider-manualPayment", operation: "authorizePayment", isMockSuccess })
     const result = {
-      status: isMockSuccess ? "authorized" : "pending",
+      status: isMockSuccess ? "authorized" as const : "pending" as const,
       data: input.data ?? {},
     }
     log({ level: "info", module: "provider-manualPayment", operation: "authorizePayment", duration: Date.now() - t0, status: result.status })

@@ -1,9 +1,4 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import { MedusaError } from "@medusajs/framework/utils"
-
-const log = (entry: Record<string, unknown>) => {
-  console.log(JSON.stringify({ ts: new Date().toISOString(), ...entry }))
-}
 
 function normalizeString(value: string | null | undefined): string | undefined {
   if (typeof value !== "string") return undefined
@@ -11,219 +6,63 @@ function normalizeString(value: string | null | undefined): string | undefined {
   return normalized || undefined
 }
 
-function maskPhone(phone: string): string {
-  if (!phone || phone.length < 7) return phone || ""
-  return phone.slice(0, 3) + "****" + phone.slice(-4)
-}
-
-function buildCustomerName({
-  firstName,
-  lastName,
-  wechatNickname,
-  phone,
-}: {
-  firstName?: string
-  lastName?: string
-  wechatNickname?: string
-  phone?: string
-}) {
-  const displayName = [firstName, lastName].filter(Boolean).join(" ").trim()
-  return displayName || wechatNickname || (phone ? `用户 ${maskPhone(phone)}` : "微信顾客")
-}
-
-function buildCustomerNote({
-  firstName,
-  lastName,
-  wechatNickname,
-  phone,
-}: {
-  firstName?: string
-  lastName?: string
-  wechatNickname?: string
-  phone?: string
-}) {
-  const displayName = [firstName, lastName].filter(Boolean).join(" ").trim()
-  if (wechatNickname && wechatNickname !== displayName) {
-    return `微信昵称 ${wechatNickname}`
-  }
-  if (phone) {
-    return `手机号 ${maskPhone(phone)}`
-  }
-  return "顾客支持"
-}
-
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
-  const t0 = Date.now()
   const { searchParams } = new URL(
     req.url,
     `http://${req.headers.host || "localhost"}`
   )
-  const key = normalizeString(searchParams.get("key"))
-  const targetSlugs = [
-    ...new Set(
-      searchParams
-        .getAll("targetSlug")
-        .map((slug) => normalizeString(slug))
-        .filter((slug): slug is string => Boolean(slug))
-    ),
-  ]
+  const productHandle = normalizeString(searchParams.get("productHandle"))
+  const productId = normalizeString(searchParams.get("productId"))
 
-  if (!key || targetSlugs.length === 0) {
-    throw new MedusaError(
-      MedusaError.Types.INVALID_DATA,
-      "Missing valid sales targets"
-    )
+  if (!productHandle && !productId) {
+    return res.status(400).json({ error: "Missing productHandle or productId" })
   }
 
   const query = req.scope.resolve("query")
-  const logger = req.scope.resolve("logger")
-
-  log({ level: "info", module: "backend-store-products-leaderboard", operation: "getLeaderboard", phase: "start", key, targetSlugCount: targetSlugs.length })
+  const leaderboardService = req.scope.resolve("salesLeaderboard")
 
   try {
-    const queryT0 = Date.now()
-    const { data: orders } = await query.graph({
-      entity: "order",
-      fields: [
-        "id",
-        "customer_id",
-        "email",
-        "items.product_id",
-        "items.product.handle",
-        "items.product.title",
-        "items.product.metadata",
-        "items.quantity",
-      ],
-      filters: {
-        status: ["completed"],
-      },
-    })
-    log({ level: "info", module: "backend-store-products-leaderboard", operation: "queryOrders", phase: "step", duration: Date.now() - queryT0, orderCount: orders.length, entity: "order", filterKeys: "status" })
-
-    const targetSlugSet = new Set(targetSlugs)
-    const customerCopies = new Map<string, number>()
-    let totalSold = 0
-
-    for (const order of orders) {
-      const items: any[] = order.items || []
-      let orderMatchedCopies = 0
-
-      for (const item of items) {
-        if (!item) continue
-        const product = item.product || {}
-        const handle = normalizeString(product?.handle)
-        const storefrontSlug = normalizeString(product?.metadata?.storefront_slug)
-        const quantity = typeof item.quantity === "number" ? item.quantity : 0
-
-        if (quantity <= 0) continue
-
-        const matches =
-          (handle && targetSlugSet.has(handle)) ||
-          (storefrontSlug && targetSlugSet.has(storefrontSlug))
-
-        if (matches) {
-          orderMatchedCopies += quantity
-        }
-      }
-
-      if (orderMatchedCopies <= 0) continue
-
-      totalSold += orderMatchedCopies
-
-      const customerId = normalizeString(order.customer_id)
-      if (customerId) {
-        customerCopies.set(
-          customerId,
-          (customerCopies.get(customerId) ?? 0) + orderMatchedCopies
-        )
+    // Resolve product handle → product ID
+    let resolvedProductId = productId
+    if (!resolvedProductId && productHandle) {
+      const productService = req.scope.resolve("product")
+      const products = await productService.listProducts(
+        { handle: productHandle },
+        { select: ["id"] },
+      )
+      if (products && products.length > 0) {
+        resolvedProductId = products[0].id
       }
     }
 
-    const sortedEntries = [...customerCopies.entries()]
-      .map(([customerId, copies]) => ({
-        id: customerId,
-        name: "Customer",
-        copies,
-        note: "顾客支持",
-      }))
-      .sort((a, b) => {
-        if (b.copies !== a.copies) return b.copies - a.copies
-        return a.id.localeCompare(b.id, "en", { numeric: true })
-      })
+    if (!resolvedProductId) {
+      return res.json({ entries: [], totalSold: 0 })
+    }
+
+    // Query leaderboard for this product, sorted by copies DESC
+    const rows = await leaderboardService.listSalesLeaderboards(
+      { productId: resolvedProductId },
+    )
+
+    const sorted = (rows as any[])
+      .sort((a, b) => b.totalCopies - a.totalCopies)
       .slice(0, 5)
 
-    // Enrich customer entries with names and wechat data
-    const customerService: any = req.scope.resolve("customer")
-    const customerExtensionService = (() => {
-      try {
-        return req.scope.resolve("customerExtension")
-      } catch {
-        return null
-      }
-    })()
-
-    const enrichedEntries: any[] = []
-
-    for (const entry of sortedEntries) {
-      try {
-        const customer: any = await customerService.retrieveCustomer(entry.id, {
-          select: ["id", "first_name", "last_name", "phone"],
-        })
-
-        let wechatNickname: string | undefined
-        if (customerExtensionService) {
-          try {
-            const extensions: any = await customerExtensionService.listCustomerExtensions({
-              filters: { customerId: entry.id },
-            })
-            if (extensions?.length > 0) {
-              wechatNickname = extensions[0].wechatNickname || undefined
-            }
-          } catch {
-            // customerExtension may not have listCustomerExtensions
-          }
-        }
-
-        enrichedEntries.push({
-          id: entry.id,
-          copies: entry.copies,
-          name: buildCustomerName({
-            firstName: customer.first_name,
-            lastName: customer.last_name,
-            wechatNickname,
-            phone: customer.phone,
-          }),
-          note: buildCustomerNote({
-            firstName: customer.first_name,
-            lastName: customer.last_name,
-            wechatNickname,
-            phone: customer.phone,
-          }),
-        })
-      } catch {
-        enrichedEntries.push(entry)
-      }
-    }
-
-    logger.info(
-      `Leaderboard retrieved: key=${key}, entries=${enrichedEntries.length}, totalSold=${totalSold}`
+    const totalSold = (rows as any[]).reduce(
+      (sum, r) => sum + (r.totalCopies || 0),
+      0,
     )
-    log({ level: "info", module: "backend-store-products-leaderboard", operation: "getLeaderboard", phase: "response", duration: Date.now() - t0, key, entryCount: enrichedEntries.length, totalSold })
 
-    return res.json({
-      entries: enrichedEntries,
-      totalSold,
-    })
-  } catch (error) {
-    console.error(JSON.stringify({
-      ts: new Date().toISOString(),
-      module: "backend-store-products-leaderboard",
-      operation: "getLeaderboard",
-      phase: "error",
-      duration: Date.now() - t0,
-      key,
-      message: error instanceof Error ? error.message : String(error),
+    const entries = sorted.map((entry) => ({
+      id: entry.customerId || entry.id,
+      name: entry.name || "Customer",
+      note: entry.note || "",
+      copies: entry.totalCopies,
     }))
-    throw error;
+
+    return res.json({ entries, totalSold })
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    return res.status(500).json({ error: msg })
   }
 }

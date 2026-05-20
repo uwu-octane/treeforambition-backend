@@ -10,12 +10,12 @@ const isDev = process.env.NODE_ENV === "development";
 // ---------------------------------------------------------------------------
 // Lazy-initialised pino instance
 // ---------------------------------------------------------------------------
-let _pinoLogger: ReturnType<typeof import("pino").default> | null = null;
+let _pinoLogger: any | null = null;
 
 function getPinoLogger() {
   if (!_pinoLogger) {
     try {
-      const pino = require("pino") as typeof import("pino");
+      const pino = require("pino") as any;
       _pinoLogger = (pino.default ?? pino)({
         level: isDev ? "debug" : "info",
         ...(isDev
@@ -58,12 +58,12 @@ export type LogEntry = {
  */
 export function createLogger(module: string) {
   function emit(level: LogEntry["level"], extra: Omit<LogEntry, "ts" | "level" | "module">) {
-    const entry: LogEntry = {
+    const entry = {
       ts: new Date().toISOString(),
       level,
       module,
       ...extra,
-    };
+    } as LogEntry;
 
     const p = getPinoLogger();
     if (p) {

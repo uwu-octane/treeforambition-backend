@@ -184,7 +184,17 @@ export async function GET(
     })
     log({ level: "info", module: "adminOrders", operation: "workflowRun", duration: Date.now() - workflowT0, needsExtraFetch, limit, offset })
 
-    let { rows, metadata } = result
+    const workflowOutput = Array.isArray(result)
+      ? {
+          rows: result,
+          metadata: {
+            count: result.length,
+            skip: offset,
+            take: limit,
+          },
+        }
+      : result
+    let { rows, metadata } = workflowOutput
 
     // ============================================================
     // 8. Post-filter for computed / nested fields

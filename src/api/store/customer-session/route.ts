@@ -90,6 +90,7 @@ export async function GET(
         extension: extensions.length > 0 ? {
           phone: extensions[0].phone,
           phone_verified_at: extensions[0].phoneVerifiedAt,
+          wechat_app_id: extensions[0].wechatAppId,
           wechat_open_id: extensions[0].wechatOpenId,
           wechat_union_id: extensions[0].wechatUnionId,
           wechat_nickname: extensions[0].wechatNickname,
