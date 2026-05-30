@@ -1,14 +1,17 @@
 import type { SubscriberArgs, SubscriberConfig } from "@medusajs/framework"
 import type { IOrderModuleService, Logger } from "@medusajs/framework/types"
 
-export default async function orderPlacedLeaderboardHandler({
+// This subscriber writes per-item copy counts into order metadata at order.placed time.
+// Leaderboard upserts now happen after payment capture (see payment-captured-leaderboard.ts)
+// so that only paid orders contribute to the sales ranking.
+
+export default async function orderPlacedMetadataHandler({
   event: { data },
   container,
 }: SubscriberArgs<{ id: string }>) {
   const logger: Logger = container.resolve("logger")
   const query = container.resolve("query")
   const orderService: IOrderModuleService = container.resolve("order")
-  const leaderboardService = container.resolve("salesLeaderboard")
 
   try {
     const orderId = data.id
@@ -17,7 +20,6 @@ export default async function orderPlacedLeaderboardHandler({
       entity: "order",
       fields: [
         "id",
-        "customer_id",
         "metadata",
         "items.*",
         "items.variant_id",
@@ -31,13 +33,7 @@ export default async function orderPlacedLeaderboardHandler({
 
     const order = orders?.[0] as any
     if (!order) {
-      logger.warn(`[SalesLeaderboard] Order ${orderId} not found`)
-      return
-    }
-
-    const customerId = order.customer_id
-    if (!customerId) {
-      logger.info(`[SalesLeaderboard] Order ${orderId} — no customer, skipping`)
+      logger.warn(`[OrderMetadata] Order ${orderId} not found`)
       return
     }
 
@@ -61,7 +57,7 @@ export default async function orderPlacedLeaderboardHandler({
       }
     })
 
-    // Aggregate copies per product (a single order may have multiple variants of the same product)
+    // Aggregate copies per product
     const byProduct = new Map<string, number>()
     for (const ic of itemCounts) {
       byProduct.set(ic.productId, (byProduct.get(ic.productId) || 0) + ic.copies)
@@ -69,7 +65,6 @@ export default async function orderPlacedLeaderboardHandler({
 
     const totalCopies = Array.from(byProduct.values()).reduce((a, b) => a + b, 0)
 
-    // Store item counts in order metadata
     const existingMeta = (order.metadata ?? {}) as Record<string, unknown>
     await orderService.updateOrders({
       selector: { id: orderId },
@@ -82,49 +77,10 @@ export default async function orderPlacedLeaderboardHandler({
       },
     } as any)
 
-    logger.info(`[SalesLeaderboard] Order ${orderId} metadata updated (${totalCopies} total copies)`)
-
-    // Resolve display name for the leaderboard
-    const { data: customers } = await query.graph({
-      entity: "customer",
-      fields: ["id", "first_name", "last_name", "metadata"],
-      filters: { id: customerId },
-    })
-    const cust = customers?.[0] as any
-    const displayName =
-      [cust?.first_name, cust?.last_name].filter(Boolean).join(" ") || customerId.slice(0, 8)
-    const displayNote =
-      (cust?.metadata as any)?.city || (cust?.metadata as any)?.company_name || ""
-
-    // Upsert leaderboard entries
-    for (const [productId, copies] of byProduct) {
-      const existing = await leaderboardService.listSalesLeaderboards(
-        { productId, customerId },
-      )
-
-      if (existing && existing.length > 0) {
-        const record = existing[0] as any
-        await leaderboardService.updateSalesLeaderboards({
-          id: record.id,
-          totalCopies: (record.totalCopies || 0) + copies,
-          name: displayName,
-          note: displayNote,
-        })
-        logger.info(`[SalesLeaderboard] +${copies} for ${displayName} (product ${productId})`)
-      } else {
-        await leaderboardService.createSalesLeaderboards({
-          productId,
-          customerId,
-          totalCopies: copies,
-          name: displayName,
-          note: displayNote,
-        })
-        logger.info(`[SalesLeaderboard] New: ${displayName} — ${copies} copies (product ${productId})`)
-      }
-    }
+    logger.info(`[OrderMetadata] Order ${orderId} metadata updated (${totalCopies} total copies)`)
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
-    logger.error(`[SalesLeaderboard] Error: ${msg}`)
+    logger.error(`[OrderMetadata] Error: ${msg}`)
   }
 }
 

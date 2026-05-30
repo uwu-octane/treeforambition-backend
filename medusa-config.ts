@@ -28,12 +28,25 @@ import {
   WECHAT_PAY_PRIVATE_KEY_PEM,
   WECHAT_PAY_PUBLIC_KEY_PEM,
   WECHAT_PAY_PUB_KEY_ID,
+  MEDUSA_BACKEND_URL,
   logEnvSummary,
 } from './src/lib/env'
 
 logEnvSummary()
 
 module.exports = defineConfig({
+  admin: {
+    backendUrl: MEDUSA_BACKEND_URL,
+    vite: () => ({
+      optimizeDeps: {
+        esbuildOptions: {
+          define: {
+            __ADMIN_DEV_CACHE_BUST__: JSON.stringify(process.env.ADMIN_DEV_CACHE_BUST || "dev"),
+          },
+        },
+      },
+    }),
+  },
   projectConfig: {
     databaseUrl: DATABASE_URL,
     redisUrl: REDIS_URL,

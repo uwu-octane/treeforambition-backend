@@ -14,7 +14,6 @@ export async function GET(
   const customerService = req.scope.resolve("customer")
   const customerExtensionService = req.scope.resolve("customerExtension")
   const favoriteService = req.scope.resolve("favorite")
-  const query = req.scope.resolve("query")
   const logger = req.scope.resolve("logger")
 
   log({ level: "info", module: "backend-store-customer-session", operation: "getSession", phase: "start", customerId })
@@ -42,38 +41,37 @@ export async function GET(
     log({ level: "info", module: "backend-store-customer-session", operation: "listFavorites", phase: "step", duration: Date.now() - t3, customerId, favoriteCount: favorites.length })
 
     const t4 = Date.now()
-    const { data: addresses } = await query.graph({
-      entity: "address",
-      fields: [
-        "id",
-        "address_name",
-        "is_default_shipping",
-        "is_default_billing",
-        "customer_id",
-        "company",
-        "first_name",
-        "last_name",
-        "address_1",
-        "address_2",
-        "city",
-        "country_code",
-        "province",
-        "postal_code",
-        "phone",
-        "metadata",
-        "created_at",
-        "updated_at",
-      ],
-      filters: {
+    const addresses = await customerService.listCustomerAddresses(
+      {
         customer_id: customerId,
       },
-    })
+      {
+        select: [
+          "id",
+          "address_name",
+          "is_default_shipping",
+          "is_default_billing",
+          "customer_id",
+          "company",
+          "first_name",
+          "last_name",
+          "address_1",
+          "address_2",
+          "city",
+          "country_code",
+          "province",
+          "postal_code",
+          "phone",
+          "metadata",
+          "created_at",
+          "updated_at",
+        ],
+      }
+    )
     const defaultAddress = addresses.find((address) => {
-      const source = address as Record<string, unknown>
-
-      return Boolean(source.is_default_shipping || source.is_default_billing)
+      return Boolean(address.is_default_shipping || address.is_default_billing)
     })
-    log({ level: "info", module: "backend-store-customer-session", operation: "queryAddresses", phase: "step", duration: Date.now() - t4, customerId, addressCount: addresses.length })
+    log({ level: "info", module: "backend-store-customer-session", operation: "listCustomerAddresses", phase: "step", duration: Date.now() - t4, customerId, addressCount: addresses.length })
 
     // Log session retrieval
     logger.info(`Customer session retrieved: ${customerId}`)

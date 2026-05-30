@@ -25,6 +25,8 @@ export async function GET(
         "display_id",
         "status",
         "payment_status",
+        "fulfillment_status",
+        "customer_id",
         "total",
         "subtotal",
         "tax_total",
@@ -45,6 +47,7 @@ export async function GET(
       ],
       filters: {
         id,
+        customer_id: customerId,
       },
     })
 

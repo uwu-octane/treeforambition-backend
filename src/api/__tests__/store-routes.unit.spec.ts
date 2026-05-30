@@ -3,6 +3,7 @@ import { GET as storeCustomGet } from "../store/custom/route"
 import { DELETE as deleteAddress } from "../store/addresses/[id]/route"
 import { GET as getAddresses, POST as postAddress } from "../store/addresses/route"
 import { GET as customerLookupGet } from "../store/customer-lookup/route"
+import { GET as customerCartGet } from "../store/customers/me/cart/route"
 import { GET as customerSessionGet } from "../store/customer-session/route"
 import { GET as getFavorites, POST as postFavorite } from "../store/favorites/route"
 import { GET as getOrder } from "../store/orders/[id]/route"
@@ -57,6 +58,11 @@ describe("store API route handlers", () => {
     expect(query.graph).toHaveBeenCalledWith(
       expect.objectContaining({
         entity: "order",
+        fields: expect.arrayContaining([
+          "fulfillment_status",
+          "shipping_methods.*",
+          "fulfillments.*",
+        ]),
         filters: { customer_id: TEST_CUSTOMER.id },
       })
     )
@@ -84,10 +90,150 @@ describe("store API route handlers", () => {
     expect(query.graph).toHaveBeenCalledWith(
       expect.objectContaining({
         entity: "order",
-        filters: { id: order.id },
+        fields: expect.arrayContaining([
+          "customer_id",
+          "fulfillment_status",
+          "payment_status",
+        ]),
+        filters: { customer_id: TEST_CUSTOMER.id, id: order.id },
       })
     )
     expect(res.body).toEqual({ order })
+  })
+
+  test("GET /store/customers/me/cart returns the customer's existing active cart", async () => {
+    const customerCart = {
+      completed_at: null,
+      customer_id: TEST_CUSTOMER.id,
+      id: "cart_existing",
+    }
+    const cart = {
+      listAndCountCarts: jest.fn().mockResolvedValue([[customerCart], 1]),
+    }
+    const query = {
+      graph: jest.fn(),
+    }
+    const res = createMedusaResponse()
+
+    await customerCartGet(
+      createMedusaRequest({
+        scope: createScope({
+          [ContainerRegistrationKeys.QUERY]: query,
+          [Modules.CART]: cart,
+          [Modules.CUSTOMER]: { retrieveCustomer: jest.fn() },
+          logger: createLogger(),
+        }),
+      }),
+      res
+    )
+
+    expect(cart.listAndCountCarts).toHaveBeenCalledWith(
+      {
+        completed_at: null,
+        customer_id: TEST_CUSTOMER.id,
+      },
+      expect.objectContaining({
+        order: { created_at: "DESC" },
+        take: 10,
+      })
+    )
+    expect(query.graph).not.toHaveBeenCalled()
+    expect(res.body).toEqual({ cart: customerCart })
+  })
+
+  test("GET /store/customers/me/cart prefers an active cart with items over a newer empty cart", async () => {
+    const emptyCart = {
+      completed_at: null,
+      customer_id: TEST_CUSTOMER.id,
+      id: "cart_empty",
+      items: [],
+    }
+    const cartWithItems = {
+      completed_at: null,
+      customer_id: TEST_CUSTOMER.id,
+      id: "cart_with_items",
+      items: [{ id: "item_test" }],
+    }
+    const cart = {
+      listAndCountCarts: jest.fn().mockResolvedValue([[emptyCart, cartWithItems], 2]),
+    }
+    const res = createMedusaResponse()
+
+    await customerCartGet(
+      createMedusaRequest({
+        scope: createScope({
+          [ContainerRegistrationKeys.QUERY]: { graph: jest.fn() },
+          [Modules.CART]: cart,
+          [Modules.CUSTOMER]: { retrieveCustomer: jest.fn() },
+          logger: createLogger(),
+        }),
+      }),
+      res
+    )
+
+    expect(res.body).toEqual({ cart: cartWithItems })
+  })
+
+  test("GET /store/customers/me/cart creates a customer cart through the Medusa workflow", async () => {
+    const { createCartWorkflow } = require("@medusajs/medusa/core-flows") as {
+      createCartWorkflow: jest.Mock
+    }
+    createCartWorkflow.mockReset()
+    const createCartRun = jest.fn().mockResolvedValue({
+      result: {
+        customer_id: TEST_CUSTOMER.id,
+        id: "cart_new",
+      },
+    })
+    createCartWorkflow.mockReturnValue({ run: createCartRun })
+
+    const cart = {
+      listAndCountCarts: jest.fn().mockResolvedValue([[], 0]),
+    }
+    const query = {
+      graph: jest
+        .fn()
+        .mockResolvedValueOnce({ data: [{ currency_code: "cny", id: "reg_test" }] })
+        .mockResolvedValueOnce({ data: [{ id: "sc_test" }] }),
+    }
+    const customer = {
+      retrieveCustomer: jest.fn().mockResolvedValue({
+        email: TEST_CUSTOMER.email,
+        id: TEST_CUSTOMER.id,
+      }),
+    }
+    const res = createMedusaResponse()
+
+    await customerCartGet(
+      createMedusaRequest({
+        scope: createScope({
+          [ContainerRegistrationKeys.QUERY]: query,
+          [Modules.CART]: cart,
+          [Modules.CUSTOMER]: customer,
+          logger: createLogger(),
+        }),
+      }),
+      res
+    )
+
+    expect(customer.retrieveCustomer).toHaveBeenCalledWith(TEST_CUSTOMER.id, {
+      select: ["id", "email"],
+    })
+    expect(createCartRun).toHaveBeenCalledWith({
+      input: {
+        currency_code: "cny",
+        customer_id: TEST_CUSTOMER.id,
+        email: TEST_CUSTOMER.email,
+        region_id: "reg_test",
+        sales_channel_id: "sc_test",
+      },
+    })
+    expect(res.body).toEqual({
+      cart: {
+        customer_id: TEST_CUSTOMER.id,
+        id: "cart_new",
+      },
+    })
   })
 
   test("GET /store/addresses lists the test customer's saved addresses", async () => {
@@ -174,6 +320,9 @@ describe("store API route handlers", () => {
       ]),
     }
     const customer = {
+      listCustomerAddresses: jest.fn().mockResolvedValue([
+        { id: "addr_test", is_default_shipping: true },
+      ]),
       retrieveCustomer: jest.fn().mockResolvedValue({
         created_at: "2026-05-14T00:00:00.000Z",
         email: TEST_CUSTOMER.email,
@@ -194,11 +343,6 @@ describe("store API route handlers", () => {
         ],
       ]),
     }
-    const query = {
-      graph: jest.fn().mockResolvedValue({
-        data: [{ id: "addr_test", is_default_shipping: true }],
-      }),
-    }
     const res = createMedusaResponse()
 
     await customerSessionGet(
@@ -208,13 +352,18 @@ describe("store API route handlers", () => {
           customerExtension,
           favorite,
           logger: createLogger(),
-          query,
         }),
       }),
       res
     )
 
     expect(customer.retrieveCustomer).toHaveBeenCalledWith(TEST_CUSTOMER.id, expect.any(Object))
+    expect(customer.listCustomerAddresses).toHaveBeenCalledWith(
+      { customer_id: TEST_CUSTOMER.id },
+      expect.objectContaining({
+        select: expect.arrayContaining(["id", "address_name", "is_default_shipping"]),
+      })
+    )
     expect(res.body.customer.id).toBe(TEST_CUSTOMER.id)
     expect(res.body.favoriteProductSlugs).toBeUndefined()
     expect(res.body.favorites).toEqual([

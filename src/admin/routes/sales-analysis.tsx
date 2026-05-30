@@ -1,15 +1,27 @@
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { Container, Heading, Text, Table, Badge, toast } from "@medusajs/ui"
+import { Container, Heading, Text, Table } from "@medusajs/ui"
 import { useQuery } from "@tanstack/react-query"
 import { sdk } from "../lib/client"
-import type { LoaderFunctionArgs } from "react-router-dom"
+
+type LeaderboardEntry = {
+  rank: number
+  name: string
+  note: string
+  copies: number
+}
+
+type LeaderboardProduct = {
+  productId: string
+  totalSold: number
+  entries: LeaderboardEntry[]
+}
 
 type SalesSummary = {
   totalOrders: number
   totalRevenue: number
   totalItems: number
-  byPerson: Array<{ name: string; orders: number; revenue: number }>
   byProduct: Array<{ title: string; sold: number; revenue: number }>
+  leaderboard: LeaderboardProduct[]
 }
 
 const SalesAnalysisPage = () => {
@@ -42,7 +54,7 @@ const SalesAnalysisPage = () => {
 
       <div className="grid grid-cols-3 gap-4 mb-8">
         <div className="shadow-elevation-card-rest bg-ui-bg-component rounded-md p-4">
-          <Text size="small" className="text-ui-fg-subtle">总订单数</Text>
+          <Text size="small" className="text-ui-fg-subtle">已付款订单数</Text>
           <Heading level="h2">{data?.totalOrders ?? 0}</Heading>
         </div>
         <div className="shadow-elevation-card-rest bg-ui-bg-component rounded-md p-4">
@@ -55,27 +67,7 @@ const SalesAnalysisPage = () => {
         </div>
       </div>
 
-      <Heading level="h2" className="mb-4">按人物统计</Heading>
-      <Table>
-        <Table.Header>
-          <Table.Row>
-            <Table.HeaderCell>封面人物</Table.HeaderCell>
-            <Table.HeaderCell>订单数</Table.HeaderCell>
-            <Table.HeaderCell>收入</Table.HeaderCell>
-          </Table.Row>
-        </Table.Header>
-        <Table.Body>
-          {(data?.byPerson ?? []).map((p) => (
-            <Table.Row key={p.name}>
-              <Table.Cell>{p.name}</Table.Cell>
-              <Table.Cell>{p.orders}</Table.Cell>
-              <Table.Cell>¥{p.revenue.toLocaleString()}</Table.Cell>
-            </Table.Row>
-          ))}
-        </Table.Body>
-      </Table>
-
-      <Heading level="h2" className="mt-8 mb-4">按商品统计</Heading>
+      <Heading level="h2" className="mb-4">按商品统计</Heading>
       <Table>
         <Table.Header>
           <Table.Row>
@@ -92,8 +84,47 @@ const SalesAnalysisPage = () => {
               <Table.Cell>¥{p.revenue.toLocaleString()}</Table.Cell>
             </Table.Row>
           ))}
+          {data?.byProduct?.length === 0 && (
+            <Table.Row>
+              <Table.Cell colSpan={3} className="text-center text-ui-fg-muted">
+                暂无数据
+              </Table.Cell>
+            </Table.Row>
+          )}
         </Table.Body>
       </Table>
+
+      <Heading level="h2" className="mt-8 mb-4">销售排行（前5名客户）</Heading>
+      {(data?.leaderboard ?? []).map((product) => (
+        <div key={product.productId} className="mb-6">
+          <Text size="small" className="text-ui-fg-subtle mb-2">
+            产品 {product.productId} — 总销量 {product.totalSold}
+          </Text>
+          <Table>
+            <Table.Header>
+              <Table.Row>
+                <Table.HeaderCell>排名</Table.HeaderCell>
+                <Table.HeaderCell>客户</Table.HeaderCell>
+                <Table.HeaderCell>备注</Table.HeaderCell>
+                <Table.HeaderCell>购买数量</Table.HeaderCell>
+              </Table.Row>
+            </Table.Header>
+            <Table.Body>
+              {product.entries.map((entry) => (
+                <Table.Row key={`${product.productId}-${entry.rank}`}>
+                  <Table.Cell>#{entry.rank}</Table.Cell>
+                  <Table.Cell>{entry.name}</Table.Cell>
+                  <Table.Cell>{entry.note}</Table.Cell>
+                  <Table.Cell>{entry.copies}</Table.Cell>
+                </Table.Row>
+              ))}
+            </Table.Body>
+          </Table>
+        </div>
+      ))}
+      {data?.leaderboard?.length === 0 && (
+        <Text className="text-ui-fg-muted">暂无排行数据</Text>
+      )}
     </Container>
   )
 }

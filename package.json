@@ -14,8 +14,10 @@
   ],
   "scripts": {
     "build": "medusa build",
-    "start": "medusa start",
-    "dev": "medusa develop",
+    "start": "medusa start --host 0.0.0.0",
+    "clean:vite": "rm -rf node_modules/.vite .medusa/client .medusa/server/public/admin/.vite",
+    "dev": "rm -rf node_modules/.vite .medusa/client .medusa/server/public/admin/.vite && ADMIN_DEV_CACHE_BUST=$(date +%s) medusa develop --host 0.0.0.0",
+    "dev:lan": "rm -rf node_modules/.vite .medusa/client .medusa/server/public/admin/.vite && ADMIN_DEV_CACHE_BUST=$(date +%s) HMR_HOST=192.168.1.6 HMR_BIND_HOST=0.0.0.0 HMR_PORT=9001 HMR_CLIENT_PORT=9001 __MEDUSA_ADMIN_ADDITIONAL_ALLOWED_HOSTS=192.168.1.6 medusa develop --host 0.0.0.0",
     "test:integration:http": "TEST_TYPE=integration:http NODE_OPTIONS=--experimental-vm-modules jest --silent=false --runInBand --forceExit",
     "test:integration:modules": "TEST_TYPE=integration:modules NODE_OPTIONS=--experimental-vm-modules jest --silent=false --runInBand --forceExit",
     "test:unit": "TEST_TYPE=unit NODE_OPTIONS=--experimental-vm-modules jest --silent --runInBand --forceExit"

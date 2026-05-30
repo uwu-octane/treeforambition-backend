@@ -137,10 +137,13 @@ export async function GET(
 
   // ============================================================
   // 6. Build fields list
+  //    Prefer req.queryConfig.fields (populated by built-in middleware) which
+  //    handles field operators like +field / -field correctly.
+  //    Always ensure customer, sales_channel, and payment relations are loaded.
   // ============================================================
-  const fieldsParam = getParam("fields")
-  const baseFields = fieldsParam
-    ? fieldsParam.split(",").map((f: string) => f.trim())
+  const middlewareFields: string[] = (req as any).queryConfig?.fields ?? []
+  const baseFields = middlewareFields.length > 0
+    ? middlewareFields
     : [
         "id",
         "display_id",
@@ -157,10 +160,7 @@ export async function GET(
         "*items",
       ]
 
-  // If we need to post-filter or extra-fetch, pull all related data
-  const fields = (paymentStatus || fulfillmentStatus || itemCount)
-    ? [...new Set([...baseFields, "payment_collections.*", "fulfillments.*", "*customer"])]
-    : baseFields
+  const fields = [...new Set([...baseFields, "*customer", "*sales_channel", "*payment_collections", "*fulfillments"])]
 
   // ============================================================
   // 7. Run the workflow

@@ -23,6 +23,8 @@ export async function GET(
         "display_id",
         "status",
         "payment_status",
+        "fulfillment_status",
+        "customer_id",
         "total",
         "subtotal",
         "tax_total",
@@ -35,6 +37,8 @@ export async function GET(
         "items.*",
         "shipping_address.*",
         "billing_address.*",
+        "shipping_methods.*",
+        "fulfillments.*",
       ],
       filters: {
         customer_id: customerId,

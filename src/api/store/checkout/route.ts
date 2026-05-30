@@ -83,7 +83,7 @@ export async function POST(
     // 2. Resolve each item by product handle (productId) to variant ID
     // ============================================================
     const t2 = Date.now()
-    const lineItems: Array<{ variant_id: string; quantity: number }> = []
+    const lineItems: Array<{ variant_id: string; quantity: number; title: string }> = []
 
     for (const item of body.items) {
       const { data: products } = await query.graph({
@@ -123,6 +123,7 @@ export async function POST(
       lineItems.push({
         variant_id: variant.id,
         quantity: item.quantity,
+        title: product.title,
       })
     }
 
@@ -191,8 +192,7 @@ export async function POST(
       items: lineItems.map((item) => ({
         variant_id: item.variant_id,
         quantity: item.quantity,
-        title: "",
-        unit_price: 0,
+        title: item.title,
       })),
     })
 
